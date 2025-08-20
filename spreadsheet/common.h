@@ -17,8 +17,10 @@ struct Position {
     bool operator<(Position rhs) const;
 
     bool IsValid() const;
+    static std::string GetLettersFromInt(int num);
     std::string ToString() const;
 
+    static int GetIntFromLetters(std::string_view str);
     static Position FromString(std::string_view str);
 
     static const int MAX_ROWS = 16384;
@@ -39,7 +41,7 @@ public:
     enum class Category {
         Ref,    // ссылка на ячейку с некорректной позицией
         Value,  // ячейка не может быть трактована как число
-        Div0,  // в результате вычисления возникло деление на ноль
+        Arithmetic,  // в результате вычисления возникло деление на ноль
     };
 
     FormulaError(Category category);
@@ -54,7 +56,7 @@ private:
     Category category_;
 };
 
-std::ostream& operator<<(std::ostream& output, FormulaError fe);
+std::ostream& operator<<(std::ostream& output, const FormulaError& error);
 
 // Исключение, выбрасываемое при попытке передать в метод некорректную позицию
 class InvalidPositionException : public std::out_of_range {
@@ -101,6 +103,8 @@ public:
 
 inline constexpr char FORMULA_SIGN = '=';
 inline constexpr char ESCAPE_SIGN = '\'';
+
+std::ostream& operator<<(std::ostream& out, const CellInterface::Value& value);
 
 // Интерфейс таблицы
 class SheetInterface {

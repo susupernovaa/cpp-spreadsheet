@@ -72,7 +72,7 @@ public:
     virtual ~Expr() = default;
     virtual void Print(std::ostream& out) const = 0;
     virtual void DoPrintFormula(std::ostream& out, ExprPrecedence precedence) const = 0;
-    virtual double Evaluate(/*добавьте сюда нужные аргументы*/ args) const = 0;
+    virtual double Evaluate(const std::function<double(Position)>& cell_evaluator) const = 0;
 
     // higher is tighter
     virtual ExprPrecedence GetPrecedence() const = 0;
@@ -142,8 +142,26 @@ public:
         }
     }
 
-    double Evaluate(/*добавьте нужные аргументы*/) const override {
-			// Скопируйте ваше решение из предыдущих уроков.
+    double Evaluate(const std::function<double(Position)>& cell_evaluator) const override {
+        double result = 0;
+        switch (type_) {
+            case Add:
+                result = lhs_->Evaluate(cell_evaluator) + rhs_->Evaluate(cell_evaluator);
+                break;
+            case Subtract:
+                result = lhs_->Evaluate(cell_evaluator) - rhs_->Evaluate(cell_evaluator);
+                break;
+            case Multiply:
+                result = lhs_->Evaluate(cell_evaluator) * rhs_->Evaluate(cell_evaluator);
+                break;
+            case Divide:
+                result = lhs_->Evaluate(cell_evaluator) / rhs_->Evaluate(cell_evaluator);
+                break;
+        }
+        if (!std::isfinite(result)) {
+            throw FormulaError(FormulaError::Category::Arithmetic);
+        }
+        return result;
     }
 
 private:
@@ -180,8 +198,15 @@ public:
         return EP_UNARY;
     }
 
-    double Evaluate(/*добавьте нужные аргументы*/ args) const override {
-        // Скопируйте ваше решение из предыдущих уроков.
+    double Evaluate(const std::function<double(Position)>& cell_evaluator) const override {
+        switch (type_) {
+            case UnaryPlus:
+                return operand_->Evaluate(cell_evaluator);
+            case UnaryMinus:
+                return -operand_->Evaluate(cell_evaluator);
+            default:
+                throw FormulaError(FormulaError::Category::Arithmetic);
+        }
     }
 
 private:
@@ -197,7 +222,7 @@ public:
 
     void Print(std::ostream& out) const override {
         if (!cell_->IsValid()) {
-            out << FormulaError::Category::Ref;
+            out << FormulaError(FormulaError::Category::Ref);
         } else {
             out << cell_->ToString();
         }
@@ -211,8 +236,11 @@ public:
         return EP_ATOM;
     }
 
-    double Evaluate(/*добавьте нужные аргументы*/ args) const override {
-        // реализуйте метод.
+    double Evaluate(const std::function<double(Position)>& cell_evaluator) const override {
+        if (!cell_) {
+            return 0.0;
+        }
+        return cell_evaluator(*cell_);
     }
 
 private:
@@ -237,7 +265,7 @@ public:
         return EP_ATOM;
     }
 
-    double Evaluate(/*добавьте нужные аргументы*/ args) const override {
+    double Evaluate(const std::function<double(Position)>& cell_evaluator) const override {
         return value_;
     }
 
@@ -391,8 +419,49 @@ void FormulaAST::PrintFormula(std::ostream& out) const {
     root_expr_->PrintFormula(out, ASTImpl::EP_ATOM);
 }
 
-double FormulaAST::Execute(/*добавьте нужные аргументы*/ args) const {
-    return root_expr_->Evaluate(/*добавьте нужные аргументы*/ args);
+std::optional<double> AsNumber(const std::string& value) {
+    try {
+        if (value.empty()) {
+            return 0.0;
+        }
+        for (const auto& elem : value) {
+            if (!isdigit(elem)) {
+                return std::nullopt;
+            }
+        }
+        return std::stod(value);
+    } catch (const std::exception& e) {
+        return std::nullopt;
+    }
+}
+
+double FormulaAST::Execute(const SheetInterface& sheet) const {
+    auto cell_evaluator = [&sheet](Position pos) -> double {
+        if (!pos.IsValid()) {
+            throw FormulaError(FormulaError::Category::Ref);
+        }
+        const auto* cell = sheet.GetCell(pos);
+        if (!cell) {
+            return 0.0;
+        }
+
+        auto cell_value = cell->GetValue();
+
+        if (std::holds_alternative<double>(cell_value)) {
+            return std::get<double>(cell_value);
+        } else if (std::holds_alternative<std::string>(cell_value)) {
+            std::optional<double> number = AsNumber(std::get<std::string>(cell_value));
+            if (!number) {
+                throw FormulaError(FormulaError::Category::Value);
+            }
+            return *number;
+        } else if (std::holds_alternative<FormulaError>(cell_value)) {
+            throw std::get<FormulaError>(cell_value);
+        } else {
+            return 0.0;
+        }
+    };
+    return root_expr_->Evaluate(cell_evaluator);
 }
 
 FormulaAST::FormulaAST(std::unique_ptr<ASTImpl::Expr> root_expr, std::forward_list<Position> cells)
