@@ -29,7 +29,11 @@ void Sheet::SetCell(Position pos, std::string text) {
     }
 
     cells_[pos.row][pos.col] = std::make_unique<Cell>(*this);
-    cells_[pos.row][pos.col]->InvalidateCache();
+
+    {
+        std::unordered_set<Cell*> visited_cells;
+        cells_[pos.row][pos.col]->InvalidateCache(visited_cells);
+    }
 
     try {
         cells_[pos.row][pos.col]->Set(std::move(text));
@@ -65,7 +69,11 @@ void Sheet::ClearCell(Position pos) {
     if (!IsAccessible(pos) || (IsAccessible(pos) && !cells_[pos.row][pos.col])) {
         return;
     }
-    cells_[pos.row][pos.col].reset();
+    if (cells_[pos.row][pos.col]->IsReferenced()) {
+        cells_[pos.row][pos.col]->Clear();
+    } else {
+        cells_[pos.row][pos.col].reset();
+    }
     UpdatePrintableSize();
 }
 
@@ -93,10 +101,7 @@ const Cell* Sheet::GetConcreteCell(Position pos) const {
 }
 
 Cell* Sheet::GetConcreteCell(Position pos) {
-    if (!pos.IsValid()) {
-        throw InvalidPositionException("Invalid position");
-    }
-    return IsAccessible(pos) ? cells_[pos.row][pos.col].get() : nullptr;
+    return const_cast<Cell*>(static_cast<const Sheet*>(this)->GetConcreteCell(pos));
 }
 
 void Sheet::MaybeIncreaseSizeToIncludePosition(Position pos) {

@@ -102,10 +102,14 @@ Cell::Cell(Sheet& sheet)
 
 Cell::~Cell() = default;
 
-void Cell::InvalidateCache() {
+void Cell::InvalidateCache(std::unordered_set<Cell*>& visited) {
+    if (visited.find(this) != visited.end()) {
+        return;
+    }
+    visited.insert(this);
     impl_->InvalidateCache();
     for (Cell* cell : refs_to_cell_) {
-        cell->InvalidateCache();
+        cell->InvalidateCache(visited);
     }
 }
 
@@ -123,6 +127,7 @@ void Cell::Set(std::string text) {
 
 void Cell::Clear() {
     impl_->Clear();
+    cell_refs_.clear();
 }
 
 Cell::Value Cell::GetValue() const {
@@ -137,7 +142,7 @@ std::vector<Position> Cell::GetReferencedCells() const {
 }
 
 bool Cell::IsReferenced() const {
-    return refs_to_cell_.empty();
+    return !refs_to_cell_.empty();
 }
 
 void Cell::UpdateCellRefs() {

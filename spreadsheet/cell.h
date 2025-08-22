@@ -20,7 +20,7 @@ public:
     explicit Cell(Sheet& sheet);
     ~Cell();
 
-    void InvalidateCache();
+    void InvalidateCache(std::unordered_set<Cell*>& visited);
 
     void Set(std::string text);
     void Clear();
